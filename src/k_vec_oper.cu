@@ -1,4 +1,3 @@
-#include <__clang_cuda_builtin_vars.h>
 #ifndef SERIAL
 
 
