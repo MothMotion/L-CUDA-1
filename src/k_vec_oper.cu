@@ -1,5 +1,3 @@
-#include <__clang_cuda_builtin_vars.h>
-#include <thread>
 #ifndef SERIAL
 
 
@@ -79,6 +77,8 @@ __global__ void KSum(arr_t* arr, const uint32_t& size, arrO_t* out) {
 
   for(uint32_t i=idx; i<idx+proc_size && i<size; ++i)
     out[threadIdx.x] += arr[i];
+
+  __syncthreads();
 
   if(blockIdx.x == gridDim.x - 1 && threadIdx.x == 0)
     for(uint32_t i=1; i<blockDim.x; ++i)
