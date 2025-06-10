@@ -11,8 +11,11 @@
 
 const uint32_t ARRAY_SIZE = (uint32_t)atoi(getenv("ARRAY_SIZE"));
 const uint32_t CYCLES = (uint32_t)atoi(getenv("CYCLES"));
-const uint32_t KBLOCKS = (uint32_t)atoi(getenv("KBLOCKS"));
+const uint32_t _KBLOCKS = (uint32_t)atoi(getenv("KBLOCKS"));
 const uint32_t KTHREADS = (uint32_t)atoi(getenv("KTHREADS"));
+const uint32_t KBLOCKS = (_KBLOCKS) ? (_KBLOCKS) : ( (ARRAY_SIZE + KTHREADS - 1)/KTHREADS ); 
+
+const uint32_t MAX_THREADS = 1024;
 
 //#define SERIAL
 

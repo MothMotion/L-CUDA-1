@@ -21,16 +21,14 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   cudaEventCreate(&start);
   cudaEventCreate(&end);
 
-  struct {uint32_t size; uint32_t threads;}
-  options = {size, KTHREADS};
-
   arr_t* d_arr;
   arrO_t* d_out;
   // {size, options}
-  uint32_t *d_options;
+  uint32_t *d_size, *d_counter;
   cudaMalloc((void**)&d_arr, size*sizeof(arr_t));
-  cudaMalloc((void**)&d_out, KTHREADS*sizeof(arrO_t));
-  cudaMalloc((void**)&d_options, 2*sizeof(uint32_t));
+  cudaMalloc((void**)&d_out, sizeof(arrO_t));
+  cudaMalloc((void**)&d_size, sizeof(uint32_t));
+  cudaMalloc((void**)&d_counter, sizeof(uint32_t));
 
   dim3 blocks(KBLOCKS, 1, 1);
   dim3 threads(KTHREADS, 1, 1);
@@ -43,14 +41,15 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
     cudaHostRegister(arr, size*sizeof(arr_t), cudaHostRegisterDefault);
 
     cudaMemcpyAsync(d_arr, arr, size*sizeof(arr_t), cudaMemcpyHostToDevice, stream);
-    cudaMemset(d_out, 0, KTHREADS*sizeof(arrO_t));
-    cudaMemcpy(d_options, &options, 2*sizeof(uint32_t), cudaMemcpyHostToDevice); 
+    cudaMemset(d_out, 0, sizeof(arrO_t));
+    cudaMemset(d_counter, 0, sizeof(uint32_t));
+    cudaMemcpy(d_size, &size, sizeof(uint32_t), cudaMemcpyHostToDevice); 
 
     cudaHostUnregister(arr);
   }), time.memcpy, start, end); 
 
   CUDATIME(({
-    KSum<<<blocks, threads>>>(d_arr, d_options[0], d_out); 
+    KSum<<<blocks, threads>>>(d_arr, *d_size, *d_out, *d_counter); 
   }), time.run, start, end);
 
   CUDATIME(({ 
@@ -64,25 +63,42 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
 
   cudaFree(d_arr); 
   cudaFree(d_out);
-  cudaFree(d_options);
+  cudaFree(d_size);
+  cudaFree(d_counter);
 
   return time;
 }
 
 
 
-__global__ void KSum(arr_t* arr, const uint32_t& size, arrO_t* out) {
+__global__ void KSum(arr_t* arr, const uint32_t& size, arrO_t& out, uint32_t& counter) {
   const uint32_t proc_size = size / gridDim.x;
-  uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x * proc_size;
+  const uint32_t thread_size = proc_size / blockDim.x;
+  uint32_t idx = blockIdx.x * proc_size + threadIdx.x * thread_size;
 
-  for(uint32_t i=idx; i<idx+proc_size && i<size; ++i)
-    out[threadIdx.x] += arr[i];
+  arrO_t temp_out = 0;
+
+  for(uint32_t i=idx; i<idx+thread_size && i<size; ++i)
+    temp_out += arr[i];
+
+  __shared__ arrO_t sdata[MAX_THREADS];
+  sdata[threadIdx.x] = temp_out;
 
   __syncthreads();
 
-  if(blockIdx.x == gridDim.x - 1 && threadIdx.x == 0)
-    for(uint32_t i=1; i<blockDim.x; ++i)
-      out[0] += out[i];
+  for(uint32_t i = blockDim.x/2; i>0; i >>= 1) {
+    if(threadIdx.x < i)
+      sdata[threadIdx.x] += sdata[threadIdx.x + i];
+    __syncthreads();
+  }
+
+  if(threadIdx.x == 0) {
+    while(atomicInc(&counter, gridDim.x) != blockIdx.x)
+      __threadfence();
+
+    out += sdata[0];
+    __threadfence();
+  }
 }
 
 #endif

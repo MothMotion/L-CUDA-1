@@ -15,7 +15,6 @@
 
 
 
-__global__ void KSum(arr_t* arr1, const uint32_t& size, arrO_t* out);
-__global__ void KGetSum(arrO_t* arr, const uint32_t& size);
+__global__ void KSum(arr_t* arr1, const uint32_t& size, arrO_t& out, uint32_t& counter);
 
 #endif
