@@ -26,7 +26,7 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   arrO_t* d_out;
   uint32_t* d_size;
   cudaMalloc((void**)&d_arr, size*sizeof(arr_t));
-  cudaMalloc((void**)&d_out, sizeof(arrO_t));
+  cudaMalloc((void**)&d_out, KTHREADS*sizeof(arrO_t));
   cudaMalloc((void**)&d_size, sizeof(uint32_t));
 
   cudaStream_t stream;
@@ -37,7 +37,7 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
     cudaHostRegister(arr, size, cudaHostRegisterDefault);
 
     cudaMemcpyAsync(d_arr, arr, size*sizeof(arr_t), cudaMemcpyHostToDevice, stream);
-    cudaMemset(d_out, 0, sizeof(arrO_t));
+    cudaMemset(d_out, 0, KTHREADS*sizeof(arrO_t));
     cudaMemcpy(d_size, &size, sizeof(arr_t), cudaMemcpyHostToDevice);
 
     cudaHostUnregister(arr);
@@ -47,7 +47,9 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   dim3 threads(KTHREADS, 1, 1);
 
   CUDATIME(({
-    KSum<<<blocks, threads>>>(d_arr, size, *d_out);
+    KSum<<<blocks, threads>>>(d_arr, size, d_out);
+    for(uint32_t i=1; i<threads.x; ++i)
+      d_out[0] += d_out[i];
   }), time.run, start, end);
 
   CUDATIME(({ 

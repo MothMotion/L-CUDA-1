@@ -14,6 +14,7 @@
 
 
 int main() {
+  srand(10000);
   time_s time_temp;
   uint32_t arr_size = ARRAY_SIZE,
            cycles   = CYCLES;
@@ -43,6 +44,7 @@ int main() {
 
     
     avg_time += Operation(arr, out, arr_size) / cycles;
+    printf("Cycle:\t%du\tOut:\t%f", i, out);
   }
 
 
