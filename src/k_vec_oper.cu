@@ -1,3 +1,4 @@
+#include <__clang_cuda_builtin_vars.h>
 #ifndef SERIAL
 
 
@@ -33,7 +34,7 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
 
 
   CUDATIME(({
-    cudaHostRegister(arr, size, cudaHostRegisterDefault);
+    cudaHostRegister(arr, size*sizeof(arr_t), cudaHostRegisterDefault);
 
     cudaMemcpyAsync(d_arr, arr, size*sizeof(arr_t), cudaMemcpyHostToDevice, stream);
     cudaMemset(d_out, 0, KTHREADS*sizeof(arrO_t));
@@ -46,13 +47,12 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   dim3 threads(KTHREADS, 1, 1);
 
   CUDATIME(({
-    KSum<<<blocks, threads>>>(d_arr, size, d_out);
-    for(uint32_t i=1; i<threads.x; ++i)
-      d_out[0] += d_out[i];
+    KSum<<<blocks, threads>>>(d_arr, *d_size, d_out);
+    KGetSum<<<1, 1>>>(d_out, *d_size);
   }), time.run, start, end);
 
   CUDATIME(({ 
-    cudaMemcpy(&out, &d_out, sizeof(arrO_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&out, d_out, sizeof(arrO_t), cudaMemcpyDeviceToHost);
   }), time.memret, start, end); 
 
   time.total = time.memcpy + time.run + time.memret;
@@ -75,6 +75,12 @@ __global__ void KSum(arr_t* arr, const uint32_t& size, arrO_t* out) {
 
   for(uint32_t i=idx; i<idx+proc_size && i<size; ++i)
     out[threadIdx.x] += arr[i];
+}
+
+__global__ void KGetSum(arrO_t* arr, const uint32_t& size) {
+  if(threadIdx.x == 0)
+    for(uint32_t i=1; i<size; ++i)
+      arr[0] += arr[i];
 }
 
 #endif
