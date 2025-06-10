@@ -19,7 +19,7 @@ const uint32_t KTHREADS = (uint32_t)atoi(getenv("KTHREADS"));
 #define arr_t float
 #define arrO_t double
 
-const arr_t MIN_RAND = 1;
-const arr_t MAX_RAND = 100000;
+const arr_t MIN_RAND = -1;
+const arr_t MAX_RAND = 1;
 
 #endif // !CONFIG_H

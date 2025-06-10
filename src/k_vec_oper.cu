@@ -1,4 +1,5 @@
 #include <__clang_cuda_builtin_vars.h>
+#include <thread>
 #ifndef SERIAL
 
 
@@ -22,12 +23,19 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   cudaEventCreate(&start);
   cudaEventCreate(&end);
 
+  struct {uint32_t size; uint32_t threads;}
+  options = {size, KTHREADS};
+
   arr_t* d_arr;
   arrO_t* d_out;
-  uint32_t* d_size;
+  // {size, options}
+  uint32_t *d_options;
   cudaMalloc((void**)&d_arr, size*sizeof(arr_t));
   cudaMalloc((void**)&d_out, KTHREADS*sizeof(arrO_t));
-  cudaMalloc((void**)&d_size, sizeof(uint32_t));
+  cudaMalloc((void**)&d_options, 2*sizeof(uint32_t));
+
+  dim3 blocks(KBLOCKS, 1, 1);
+  dim3 threads(KTHREADS, 1, 1);
 
   cudaStream_t stream;
   cudaStreamCreate(&stream);
@@ -38,17 +46,13 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
 
     cudaMemcpyAsync(d_arr, arr, size*sizeof(arr_t), cudaMemcpyHostToDevice, stream);
     cudaMemset(d_out, 0, KTHREADS*sizeof(arrO_t));
-    cudaMemcpy(d_size, &size, sizeof(arr_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_options, &options, 2*sizeof(uint32_t), cudaMemcpyHostToDevice); 
 
     cudaHostUnregister(arr);
-  }), time.memcpy, start, end);
-
-  dim3 blocks(KBLOCKS, 1, 1);
-  dim3 threads(KTHREADS, 1, 1);
+  }), time.memcpy, start, end); 
 
   CUDATIME(({
-    KSum<<<blocks, threads>>>(d_arr, *d_size, d_out);
-    KGetSum<<<1, 1>>>(d_out, *d_size);
+    KSum<<<blocks, threads>>>(d_arr, d_options[0], d_out); 
   }), time.run, start, end);
 
   CUDATIME(({ 
@@ -62,7 +66,7 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
 
   cudaFree(d_arr); 
   cudaFree(d_out);
-  cudaFree(d_size);
+  cudaFree(d_options);
 
   return time;
 }
@@ -75,12 +79,10 @@ __global__ void KSum(arr_t* arr, const uint32_t& size, arrO_t* out) {
 
   for(uint32_t i=idx; i<idx+proc_size && i<size; ++i)
     out[threadIdx.x] += arr[i];
-}
 
-__global__ void KGetSum(arrO_t* arr, const uint32_t& size) {
-  if(threadIdx.x == 0)
-    for(uint32_t i=1; i<size; ++i)
-      arr[0] += arr[i];
+  if(blockIdx.x == gridDim.x - 1 && threadIdx.x == 0)
+    for(uint32_t i=1; i<blockDim.x; ++i)
+      out[0] += out[i];
 }
 
 #endif

@@ -96,7 +96,7 @@ auto:
 
 	make lsf EXEC=serial ARRAY_SIZE=$(AR_SIZE) CYCLES=$(CYCLES) KBLOCKS=1 KTHREADS=1
 	for thread in $(THREADS) ; do \
-		make lsf EXEC=parallel ARRAY_SIZE=$(AR_SIZE) CYCLES=$(CYCLES) KBLOCKS=0 KTHREADS=$$thread ; \
+		make lsf EXEC=parallel ARRAY_SIZE=$(AR_SIZE) CYCLES=$(CYCLES) KBLOCKS=1 KTHREADS=$$thread ; \
 	done
 	
 	make bsubload
