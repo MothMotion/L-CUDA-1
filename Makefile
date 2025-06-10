@@ -20,6 +20,7 @@ LSF = $(wildcard $(LSF_DIR)/*.lsf)
 
 
 
+
 all: $(TARGET)
 
 serial: CCFLAGS += -DSERIAL
@@ -43,25 +44,31 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cu
 	mkdir -p $(OBJ_DIR)
 	$(NV) $(NVFLAGS) -c $< -o $@ $(DEPFLAGS)
 
+
+
 clean:
 	rm -f $(OBJ_C) $(OBJ_CU) $(DEP)
 
 fullclean:
 	rm -rf $(OBJ_DIR) $(LSF_DIR) logs err serial parallel
 
-bsubload: $(TARGET)
-	@JOB_IDS = ; \
-	for lsf_script in $(LSF) ; do \
-		if command -v bsub >/dev/null 2>&1 ; then \
-			JOB_ID = $$(bsub < $$lsf_script | awk "{print $2}" | sed 's/[<>]//g') ; \
-			JOB_IDS = "$(JOB_IDS) $(JOB_ID)" ; \
-		else \
-			sh $$lsf_script ; \
-		fi \
-	done
 
-	if command -v bsub >/dev/null 2>&1 ; then \
-		bwait -w "done($$JOB_IDS)" ; \
+
+bsubload: $(TARGET)
+	@if command -v bsub >/dev/null 2>&1; then \
+		JOB_IDS=$$( \
+			for lsf_script in $(LSF); do \
+				bsub < $$lsf_script | awk '{print $$2}' | sed 's/[<>]//g'; \
+			done \
+		); \
+		echo "$$JOB_IDS"; \
+		for job_id in $$JOB_IDS; do \
+			bwait -w "done($$job_id)"; \
+		done; \
+	else \
+		for lsf_script in $(LSF); do \
+			sh "$$lsf_script"; \
+		done; \
 	fi
 
 lsf:
