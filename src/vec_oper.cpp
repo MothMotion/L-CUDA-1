@@ -13,7 +13,7 @@
 time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   time_s result;
   GETTIME(({
-    Sum(arr, size);
+    out = Sum(arr, size);
   }), result.total); 
   return result * 1000;
 }
