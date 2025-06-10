@@ -44,7 +44,7 @@ int main() {
 
     
     avg_time += Operation(arr, out, arr_size) / cycles;
-    printf("Cycle:\t%du\tOut:\t%f", i, out);
+    printf("Cycle:\t%du\tOut:\t%f\n", i, out);
   }
 
 
