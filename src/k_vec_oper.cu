@@ -60,9 +60,6 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
 
   time.total = time.memcpy + time.run + time.memret;
 
-  cudaStreamSynchronize(stream);
-  cudaStreamDestroy(stream);
-
   cudaFree(d_arr); 
   cudaFree(d_out);
   cudaFree(d_size);
