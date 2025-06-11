@@ -1,4 +1,3 @@
-#include <__clang_cuda_builtin_vars.h>
 #ifndef SERIAL
 
 
@@ -23,13 +22,13 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   cudaEventCreate(&end);
 
   arr_t* d_arr;
-  arrO_t* d_out;
-  // {size, options}
-  uint32_t *d_size, *d_counter;
+  arrO_t *d_out, *d_result;
+  uint32_t *d_size, *d_blocks;
   cudaMalloc((void**)&d_arr, size*sizeof(arr_t));
-  cudaMalloc((void**)&d_out, sizeof(arrO_t));
+  cudaMalloc((void**)&d_out, KBLOCKS*sizeof(arrO_t));
+  cudaMalloc((void**)&d_result, sizeof(arrO_t));
   cudaMalloc((void**)&d_size, sizeof(uint32_t));
-  cudaMalloc((void**)&d_counter, sizeof(uint32_t));
+  cudaMalloc((void**)&d_blocks, sizeof(uint32_t));
 
   dim3 blocks(KBLOCKS, 1, 1);
   dim3 threads(KTHREADS, 1, 1);
@@ -37,29 +36,20 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   cudaStream_t stream;
   cudaStreamCreate(&stream);
 
-
+  cudaHostRegister(arr, size*sizeof(arr_t), cudaHostRegisterDefault);
   CUDATIME(({
-    cudaHostRegister(arr, size*sizeof(arr_t), cudaHostRegisterDefault);
-
     cudaMemcpyAsync(d_arr, arr, size*sizeof(arr_t), cudaMemcpyHostToDevice, stream);
     cudaMemset(d_out, 0, blocks.x*sizeof(arrO_t));
-    cudaMemcpy(d_size, &size, sizeof(uint32_t), cudaMemcpyHostToDevice); 
-
-    cudaHostUnregister(arr);
-  }), time.memcpy, start, end); 
+    cudaMemset(d_result, 0, sizeof(arrO_t));
+    cudaMemcpy(d_size, &size, sizeof(uint32_t), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_blocks, &blocks.x, sizeof(uint32_t), cudaMemcpyHostToDevice);
+  }), time.memcpy, start, end);
+  cudaStreamSynchronize(stream);
+  cudaHostUnregister(arr);
 
   CUDATIME(({
-    while(blocks.x > threads.x * threads.x) {
-      if(blocks.x == KBLOCKS)
-        KSum<<<blocks, threads>>>(d_arr, *d_size, d_out);
-      else
-        KSum<<<blocks, threads>>>((arrO_t*)d_arr, *d_size, d_out);
-
-      cudaMemcpy(d_arr, d_out, blocks.x * sizeof(arrO_t), cudaMemcpyDeviceToDevice);
-      blocks.x = (blocks.x + threads.x - 1)/threads.x;
-      cudaMemset(d_out, 0, blocks.x * sizeof(arrO_t)); 
-    }
-    KSum<<<1, threads>>>((arrO_t*)d_arr, *d_size, d_out);
+    KSum<<<blocks, threads, threads.x*sizeof(arrO_t)>>>(d_arr, *d_size, d_out);
+    KSum<<<1, threads, threads.x*sizeof(arrO_t)>>>((arrO_t*)d_arr, *d_blocks, d_out);
   }), time.run, start, end);
 
   CUDATIME(({ 
@@ -74,7 +64,8 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   cudaFree(d_arr); 
   cudaFree(d_out);
   cudaFree(d_size);
-  cudaFree(d_counter);
+  cudaFree(d_blocks);
+  cudaFree(d_result);
 
   return time;
 }
@@ -83,28 +74,25 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
 
 template<typename T, typename M>
 __global__ void KSum(T* arr, const uint32_t& size, M* out) {
-  const uint32_t proc_size = size / gridDim.x;
-  const uint32_t thread_size = proc_size / blockDim.x;
-  uint32_t idx = blockIdx.x * proc_size + threadIdx.x * thread_size;
+  extern __shared__ arrO_t sdata[];
+  uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
   arrO_t temp_out = 0;
 
-  for(uint32_t i=idx; i<idx+thread_size && i<size; ++i)
+  for(uint32_t i=idx; i<size; i+= blockDim.x * gridDim.x)
     temp_out += arr[i];
 
-  __shared__ arrO_t sdata[MAX_THREADS];
   sdata[threadIdx.x] = temp_out;
-
   __syncthreads();
 
   for(uint32_t i = blockDim.x/2; i>0; i >>= 1) {
     if(threadIdx.x < i)
       sdata[threadIdx.x] += sdata[threadIdx.x + i];
     __syncthreads();
-  }
+  } 
 
   if(threadIdx.x == 0)
-    out[blockIdx.x] += sdata[0];
+    out[blockIdx.x] = sdata[0];
 }
 
 #endif
