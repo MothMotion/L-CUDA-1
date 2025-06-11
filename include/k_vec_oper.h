@@ -14,7 +14,7 @@
 #include <cuda_runtime.h>
 
 
-
-__global__ void KSum(arr_t* arr1, const uint32_t& size, arrO_t& out, uint32_t& counter);
+template<typename T, typename M>
+__global__ void KSum(T* arr1, const uint32_t& size, M* out);
 
 #endif
