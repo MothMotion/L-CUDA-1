@@ -1,4 +1,3 @@
-#include <__clang_cuda_builtin_vars.h>
 #ifndef SERIAL
 
 
@@ -40,20 +39,23 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   cudaHostRegister(arr, size*sizeof(arr_t), cudaHostRegisterDefault);
   CUDATIME(({
     cudaMemcpyAsync(d_arr, arr, size*sizeof(arr_t), cudaMemcpyHostToDevice, stream);
-    cudaMemset(d_out, 0, blocks.x*sizeof(arrO_t));
-    cudaMemset(d_result, 0, sizeof(arrO_t));
-    cudaMemcpy(d_size, &size, sizeof(uint32_t), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_blocks, &blocks.x, sizeof(uint32_t), cudaMemcpyHostToDevice); 
+    cudaMemsetAsync(d_out, 0, blocks.x*sizeof(arrO_t));
+    cudaMemsetAsync(d_result, 0, sizeof(arrO_t));
+    cudaMemcpyAsync(d_size, &size, sizeof(uint32_t), cudaMemcpyHostToDevice);
+    cudaMemcpyAsync(d_blocks, &blocks.x, sizeof(uint32_t), cudaMemcpyHostToDevice); 
   }), time.memcpy, start, end);
   cudaHostUnregister(arr);
 
+  cudaStreamSynchronize(stream);
+  cudaStreamDestroy(stream);
+
   CUDATIME(({
-    KSum<<<blocks, threads>>>(d_arr, *d_size, d_out);
-    KSum<<<1, threads>>>((arrO_t*)d_arr, *d_blocks, d_out);
+    KSum<<<blocks, threads, threads.x * sizeof(arrO_t)>>>(d_arr, *d_size, d_out);
+    KSum<<<1, threads, threads.x * sizeof(arrO_t)>>>((arrO_t*)d_out, *d_blocks, d_result);
   }), time.run, start, end);
 
   CUDATIME(({ 
-    cudaMemcpy(&out, d_out, sizeof(arrO_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&out, d_result, sizeof(arrO_t), cudaMemcpyDeviceToHost);
   }), time.memret, start, end); 
 
   time.total = time.memcpy + time.run + time.memret;
@@ -74,18 +76,15 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
 
 template<typename T, typename M>
 __global__ void KSum(T* arr, const uint32_t& size, M* out) {
-  const uint32_t proc_size = size / gridDim.x;
-  const uint32_t thread_size = proc_size / blockDim.x;
-  uint32_t idx = blockIdx.x * proc_size + threadIdx.x * thread_size;
+  extern __shared__ arrO_t sdata[];
+  uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
   arrO_t temp_out = 0;
 
-  for(uint32_t i=idx; i<idx+thread_size && i<size; ++i)
+  for(uint32_t i=idx; i<size; i += blockDim.x * gridDim.x)
     temp_out += arr[i];
 
-  __shared__ arrO_t sdata[MAX_THREADS];
   sdata[threadIdx.x] = temp_out;
-
   __syncthreads();
 
   for(uint32_t i = blockDim.x/2; i>0; i >>= 1) {
@@ -93,7 +92,6 @@ __global__ void KSum(T* arr, const uint32_t& size, M* out) {
       sdata[threadIdx.x] += sdata[threadIdx.x + i];
     __syncthreads();
   }
-  __syncthreads();
 
   if(threadIdx.x == 0)
     out[blockIdx.x] += sdata[0];
