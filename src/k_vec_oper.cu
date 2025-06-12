@@ -13,10 +13,17 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 
+#include <stdio.h>
+
+#define ERRPRINT(text) \
+err = cudaGetLastError();\
+if(err != cudaSuccess)\
+  printf("%s: %s\n", text, cudaGetErrorString(err));
 
 
 time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   time_s time;
+  cudaError_t err;
   cudaEvent_t start, end;
   cudaEventCreate(&start);
   cudaEventCreate(&end);
@@ -29,6 +36,8 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   cudaMalloc((void**)&d_result, sizeof(arrO_t));
   cudaMalloc((void**)&d_size, sizeof(uint32_t));
   cudaMalloc((void**)&d_blocks, sizeof(uint32_t));
+
+  ERRPRINT("Malloc");
 
   dim3 blocks(KBLOCKS, 1, 1);
   dim3 threads(KTHREADS, 1, 1);
@@ -46,6 +55,8 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   }), time.memcpy, start, end);
   cudaHostUnregister(arr);
 
+  ERRPRINT("Memcpy");
+
   cudaStreamSynchronize(stream);
   cudaStreamDestroy(stream);
 
@@ -54,9 +65,13 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
     KSum<<<1, threads, threads.x * sizeof(arrO_t)>>>((arrO_t*)d_out, *d_blocks, d_result);
   }), time.run, start, end);
 
+  ERRPRINT("Running");
+
   CUDATIME(({ 
     cudaMemcpy(&out, d_result, sizeof(arrO_t), cudaMemcpyDeviceToHost);
-  }), time.memret, start, end); 
+  }), time.memret, start, end);
+
+  ERRPRINT("Return");
 
   time.total = time.memcpy + time.run + time.memret;
 
@@ -65,6 +80,8 @@ time_s Operation(arr_t* arr, arrO_t& out, const uint32_t& size) {
   cudaFree(d_size);
   cudaFree(d_blocks);
   cudaFree(d_result);
+
+  ERRPRINT("Free");
 
   return time;
 }

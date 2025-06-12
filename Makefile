@@ -1,7 +1,7 @@
 CC = g++
 CCFLAGS = -Wall -Wextra -Iinclude -I/opt/cuda/include
 NV = nvcc
-NVFLAGS = -Iinclude -I/opt/cuda/include
+NVFLAGS = -Iinclude -I/opt/cuda/include -gencode arch=compute_75,code=sm_75
 
 SRC_DIR = src
 OBJ_DIR = obj
